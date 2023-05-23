@@ -3,11 +3,11 @@ import simpy
 from collections import namedtuple
 import pandas as pd
 
-
+# Define the structure of a machine and a customer using namedtuple
 Machine = namedtuple("Machine", ["type", "cost", "time", "load_capacity", "quantity"])
 Customer = namedtuple("Customer", ["id", "load", "cost"])
 
-
+# Declare the available machines with their respective properties
 machines = {
     "dryer_large": Machine("dryer_large", 2, 45, 25, 2),
     "dryer_medium": Machine("dryer_medium", 1, 30, 10, 4),
@@ -17,67 +17,80 @@ machines = {
     "washer_small": Machine("washer_small", 0.5, 20, 5, 5),
 }
 
-
-laundry_sizes = {"big": 10, "medium": 5, "small": 2}
-
-def generate_customers(num_customers, max_load):
+# Function to generate a list of customers
+def generate_customers(num_customers):
     customers = []
     for i in range(num_customers):
-        load = random.choices(list(laundry_sizes.values()), k=max_load)
+        # Randomly assign a laundry load size from 1 to 40
+        load = random.randint(1, 40)
+        # Initialize the cost as 0
         customers.append(Customer(i, load, 0))
     return customers
 
+# Function to simulate the laundromat run for a customer
 def laundromat_run(env, machine, customer, records):
-    
     with machine.request() as req:
+        # Request the machine resource
         yield req
 
-        
-        yield env.timeout(machines[machine.type].time * sum(customer.load))
+        # Simulate the time it takes to finish the laundry
+        yield env.timeout(machines[machine.type].time)
 
-        
-        cost = machines[machine.type].cost * sum(customer.load)
-        customer.cost += cost
+        # Calculate cost and update the customer's cost
+        cost = machines[machine.type].cost
+        customer = Customer(customer.id, customer.load, customer.cost + cost)
 
-        
+        # Record the customer's information and cost
         records.append({
             "customer_id": customer.id,
             "machine_type": machine.type,
-            "load_size": sum(customer.load),
+            "load_size": customer.load,
             "cost": cost
         })
 
+# Function to simulate the entire process
 def simulation():
-    
+    # Create a simulation environment
     env = simpy.Environment()
 
-    
+    # Create a dictionary with machine resources
     resources = {m: simpy.Resource(env, capacity=machines[m].quantity) for m in machines}
 
-    
-    customers = generate_customers(10, 5)
+    # Generate customers
+    customers = generate_customers(10)
 
-    
+    # List to store the records of each run
     records = []
 
-    
     for customer in customers:
-        customer.cost = 0
-        env.process(laundromat_run(env, resources['washer_small'], customer, records))
-        env.process(laundromat_run(env, resources['dryer_small'], customer, records))
+        # Select the smallest machine that can handle the customer's load
+        available_machines = sorted(
+            (m for m in machines.values() if m.load_capacity >= customer.load),
+            key=lambda m: m.load_capacity,
+        )
+
+        # If there are suitable machines available, use the smallest one
+        if available_machines:
+            smallest_suitable_machine = available_machines[0]
+            resource = resources[smallest_suitable_machine.type]
+            # Start the process for this customer
+            env.process(laundromat_run(env, resource, customer, records))
+
+    # Run the simulation
     env.run()
 
-    
+    # Convert the records to a DataFrame
     records_df = pd.DataFrame(records)
 
-    
+    # Calculate the total cost
     total_cost = records_df['cost'].sum()
 
     return total_cost, records_df
 
-
+# Number of trials to run the simulation
 num_trials = 1000
 total_costs = 0
+all_records =
 all_records = pd.DataFrame()
 
 for _ in range(num_trials):
