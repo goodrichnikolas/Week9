@@ -21,23 +21,23 @@ machines = {
 def generate_customers(num_customers):
     customers = []
     for i in range(num_customers):
-        # Randomly assign a laundry load size from 1 to 40
         load = random.randint(1, 40)
-        # Initialize the cost as 0
         customers.append(Customer(i, load, 0))
     return customers
 
 # Function to simulate the laundromat run for a customer
-def laundromat_run(env, machine, customer, records):
-    with machine.request() as req:
+def laundromat_run(env, machine_resource_pair, customer, records):
+    machine, resource = machine_resource_pair
+    with resource.request() as req:
         # Request the machine resource
         yield req
 
         # Simulate the time it takes to finish the laundry
-        yield env.timeout(machines[machine.type].time)
+        actual_time = random.gauss(machine.time, machine.time * 0.1)
+        yield env.timeout(actual_time)
 
         # Calculate cost and update the customer's cost
-        cost = machines[machine.type].cost
+        cost = machine.cost
         customer = Customer(customer.id, customer.load, customer.cost + cost)
 
         # Record the customer's information and cost
@@ -54,7 +54,7 @@ def simulation():
     env = simpy.Environment()
 
     # Create a dictionary with machine resources
-    resources = {m: simpy.Resource(env, capacity=machines[m].quantity) for m in machines}
+    machine_resource_pairs = {m.type: (m, simpy.Resource(env, capacity=m.quantity)) for m in machines.values()}
 
     # Generate customers
     customers = generate_customers(10)
@@ -69,14 +69,15 @@ def simulation():
             key=lambda m: m.load_capacity,
         )
 
-        # If there are suitable machines available, use the smallest one
-        if available_machines:
-            smallest_suitable_machine = available_machines[0]
-            resource = resources[smallest_suitable_machine.type]
-            # Start the process for this customer
-            env.process(laundromat_run(env, resource, customer, records))
+        # Try each machine, starting with the smallest, until one is found that is not in use
+        for machine in available_machines:
+            machine_resource_pair = machine_resource_pairs[machine.type]
+            resource = machine_resource_pair[1]
+            if len(resource.users) < machine.quantity:
+                env.process(laundromat_run(env, machine_resource_pair, customer, records))
+                break
 
-    # Run the simulation
+# Run the simulation
     env.run()
 
     # Convert the records to a DataFrame
@@ -89,13 +90,14 @@ def simulation():
 
 # Number of trials to run the simulation
 num_trials = 1000
-total_costs = 0
-all_records =
+total_costs = []
 all_records = pd.DataFrame()
 
 for _ in range(num_trials):
     cost, records_df = simulation()
-    total_costs += cost
+    total_costs.append(cost)
     all_records = all_records.append(records_df)
 
-print(f"Average total cost: {total_costs / num_trials}")
+print(f"Average total cost: {sum(total_costs) / num_trials}")
+print(f"Max total cost: {max(total_costs)}")
+print(f"Min total cost: {min(total_costs)}")
